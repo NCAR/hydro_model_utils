@@ -1,0 +1,466 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Regrid Hydro and Noah input files to allow vector mode"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "To run Hydro over an irregular domain, we want to be able to run over a list of model elements rather than a regular grid. In this test application, we test whether this is possible by regridding a small domain in the Upper Colorado (Taylor Park) from 24x30 (south_north x west_east) to 720 x 1."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Files to be regridded are specified in two separate namelists for the Noah part of the simulation and the Hydro part of the simulation."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Spatial files to be regridded in Noah namelist (`namelist.hrldas`):\n",
+    "*  HRLDAS_SETUP_FILE = '/glade/work/nijssen/NWM/subset_v20_lr_upper_colorado/CO_TaylorPark/wrfinput_d0x.nc'\n",
+    "*  SPATIAL_FILENAME = '/glade/work/nijssen/NWM/subset_v20_lr_upper_colorado/CO_TaylorPark/soil_properties.nc'"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Spatial files to be regridded in Hydro namelist (`hydro.namelist`):\n",
+    "* GEO_STATIC_FLNM = '/glade/work/nijssen/NWM/subset_v20_lr_upper_colorado/CO_TaylorPark/geo_em.d0x.nc' ! Specify land surface model gridded input data file\n",
+    "* GEO_FINEGRID_FLNM = '/glade/work/nijssen/NWM/subset_v20_lr_upper_colorado/CO_TaylorPark/Fulldom_hires.nc' ! Specify the high-resolution routing terrain input data file\n",
+    "* HYDROTBL_F = '/glade/work/nijssen/NWM/subset_v20_lr_upper_colorado/CO_TaylorPark/hydro2dtbl.nc' ! Specify the spatial hydro parameters file. If you specify a filename and the file does not exist, it will be created for you.\n",
+    "* LAND_SPATIAL_META_FLNM = '/glade/work/nijssen/NWM/subset_v20_lr_upper_colorado/CO_TaylorPark/GEOGRID_LDASOUT_Spatial_Metadata.nc' ! Specify spatial metadata file for land surface grid.\n",
+    "* route_link_f = '/glade/work/nijssen/NWM/subset_v20_lr_upper_colorado/CO_TaylorPark/Route_Link.nc' ! Specify the reach file for reach-based routing options (e.g.: 'Route_Link.nc')\n",
+    "* GWBUCKPARM_file = '/glade/work/nijssen/NWM/subset_v20_lr_upper_colorado/CO_TaylorPark/GWBUCKPARM.nc' ! Groundwater bucket parameter file (e.g.: 'GWBUCKPARM.nc')\n",
+    "* udmap_file = '/glade/work/nijssen/NWM/subset_v20_lr_upper_colorado/CO_TaylorPark/spatialweights_v2.nc' ! If on, specify the user-defined mapping file"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Setup"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "%matplotlib inline\n",
+    "import numpy as np\n",
+    "import xarray as xr\n",
+    "import os\n",
+    "import glob"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "basepath = '/glade/work/nijssen/NWM/subset_v20_lr_upper_colorado/CO_TaylorPark'"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Regridding"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 72,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "stack_dims = ('south_north', 'west_east')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### SPATIAL_FILENAME\n",
+    "\n",
+    "This file contains soil properties for Noah"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 36,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ifile = os.path.join(basepath, 'soil_properties.nc')\n",
+    "ofile = ifile.replace('.nc', '_regrid.nc')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 37,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ds = xr.open_dataset(ifile)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 38,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import datetime\n",
+    "today = datetime.date.today()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 39,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ds1 = ds.stack(z=stack_dims).\\\n",
+    "         reset_index('z').\\\n",
+    "         expand_dims('w').\\\n",
+    "         transpose('Time','soil_layers_stag', 'z', 'w').\\\n",
+    "         rename({'z':stack_dims[0], 'w':stack_dims[1]})"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 40,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "for var in ds.variables:\n",
+    "    if stack_dims[1] not in ds[var].dims:\n",
+    "        ds1[var] = ds1[var].squeeze([stack_dims[1]])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 41,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ds1.attrs['history'] = 'Modified by Bart on {}; {}'.format(today, ds1.attrs['history'])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 42,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ds1 = ds1.drop(stack_dims)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 43,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ds1.to_netcdf(ofile)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### Compare new file with original file and with Ridwan's file"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 34,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "rfile = ifile.replace('.nc', '_v3.nc')\n",
+    "dsr = xr.open_dataset(rfile)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 35,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Variance of point by point differences\n",
+      "var             new-org      new-rid\n",
+      "bexp     :       0.0000       0.0000\n",
+      "cwpvt    :       0.0000       0.0000\n",
+      "dksat    :       0.0000       0.0000\n",
+      "dwsat    :       0.0000       0.0000\n",
+      "hvt      :       0.0000       0.0000\n",
+      "mfsno    :       0.0000       0.0000\n",
+      "mp       :       0.0000       0.0000\n",
+      "psisat   :       0.0000       0.0000\n",
+      "quartz   :       0.0000       0.0000\n",
+      "refdk    :       0.0000       0.0000\n",
+      "refkdt   :       0.0000       0.0000\n",
+      "rsurfexp :       0.0000       0.0000\n",
+      "slope    :       0.0000       0.0000\n",
+      "smcdry   :       0.0000       0.0000\n",
+      "smcmax   :       0.0000       0.0000\n",
+      "smcref   :       0.0000       0.0000\n",
+      "smcwlt   :       0.0000       0.0000\n",
+      "vcmx25   :       0.0000       0.0000\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(\"Variance of point by point differences\")\n",
+    "print(\"{:9s}  {:>12s} {:>12s}\".format('var', 'new-org', 'new-rid'))\n",
+    "for var in ds.variables:\n",
+    "    print(\"{:9s}: {:12.4f} {:12.4f}\".format(var, (ds1[var].values.flatten()-ds[var].values.flatten()).var(), \n",
+    "                                                 (ds1[var].values.flatten()-dsr[var].values.flatten()).var()))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### HRLDAS_SETUP_FILE\n",
+    "This file contains domain information for Noah"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 73,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ifile = os.path.join(basepath, 'wrfinput_d0x.nc')\n",
+    "ofile = ifile.replace('.nc', '_regrid.nc')\n",
+    "\n",
+    "ds = xr.open_dataset(ifile)\n",
+    "\n",
+    "ds1 = ds.stack(z=stack_dims).reset_index('z').expand_dims('w').transpose('Time','soil_layers_stag', 'z', 'w').rename({'z':stack_dims[0], 'w':stack_dims[1]})\n",
+    "\n",
+    "for var in ds.variables:\n",
+    "    if stack_dims[1] not in ds[var].dims:\n",
+    "        ds1[var] = ds1[var].squeeze([stack_dims[1]])\n",
+    "\n",
+    "ds1.attrs['SOUTH-NORTH_GRID_DIMENSION']=np.int32(ds1.dims['south_north']+1)\n",
+    "ds1.attrs['WEST-EAST_GRID_DIMENSION']=np.int32(ds1.dims['west_east']+1)\n",
+    "\n",
+    "ds1 = ds1.drop(stack_dims)\n",
+    "\n",
+    "ds1.to_netcdf(ofile)\n",
+    "\n",
+    "rfile = ifile.replace('_d0x.nc', '_v3.nc')\n",
+    "dsr = xr.open_dataset(rfile)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 52,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Variance of point by point differences\n",
+      "var             new-org      new-rid\n",
+      "CANWAT   :       0.0000       0.0000\n",
+      "DZS      :       0.0000       0.0000\n",
+      "HGT      :       0.0000       0.0000\n",
+      "ISLTYP   :       0.0000       0.0000\n",
+      "IVGTYP   :       0.0000       0.0000\n",
+      "LAI      :       0.0000       0.0000\n",
+      "MAPFAC_MX:       0.0000       0.0000\n",
+      "MAPFAC_MY:       0.0000       0.0000\n",
+      "SEAICE   :       0.0000       0.0000\n",
+      "SHDMAX   :       0.0000       0.0000\n",
+      "SHDMIN   :       0.0000       0.0000\n",
+      "SMOIS    :       0.0000       0.0000\n",
+      "SNOW     :       0.0000       0.0000\n",
+      "TMN      :       0.0000       0.0000\n",
+      "TSK      :       0.0000       0.0000\n",
+      "TSLB     :       0.0000       0.0000\n",
+      "XLAND    :       0.0000       0.0000\n",
+      "XLAT     :       0.0000       0.0000\n",
+      "XLONG    :       0.0000       0.0000\n",
+      "ZS       :       0.0000       0.0000\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(\"Variance of point by point differences\")\n",
+    "print(\"{:9s}  {:>12s} {:>12s}\".format('var', 'new-org', 'new-rid'))\n",
+    "for var in ds.variables:\n",
+    "    print(\"{:9s}: {:12.4f} {:12.4f}\".format(var, (ds1[var].values.flatten()-ds[var].values.flatten()).var(), \n",
+    "                                                 (ds1[var].values.flatten()-dsr[var].values.flatten()).var()))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Forcing files\n",
+    "\n",
+    "Regrid the forcing files the same way."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 54,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "ipath = os.path.join(basepath, 'forcing')\n",
+    "opath = os.path.join(basepath, 'regrid_forcing')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 55,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "for ifile in glob.iglob(os.path.join(ipath,'*LDASIN*')):\n",
+    "    ofile = os.path.join(opath, os.path.basename(ifile))\n",
+    "    ds = xr.open_dataset(ifile)\n",
+    "    ds1 = ds.stack(z=stack_dims).reset_index('z').expand_dims('w').transpose('Time', 'z', 'w').rename({'z':stack_dims[0], 'w':stack_dims[1]}) \n",
+    "    for var in ds.variables:\n",
+    "        if stack_dims[1] not in ds[var].dims:\n",
+    "            ds1[var] = ds1[var].squeeze([stack_dims[1]])\n",
+    "    ds1.to_netcdf(ofile)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### GEO_STATIC_FLNM: A much more general regridding"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 67,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "regrid_dims = ['south_north', 'south_north_stag', 'west_east', 'west_east_stag']\n",
+    "\n",
+    "ifile = os.path.join(basepath, 'geo_em.d0x.nc')\n",
+    "ofile = ifile.replace('.nc', '_regrid.nc')\n",
+    "\n",
+    "ds = xr.open_dataset(ifile)\n",
+    "\n",
+    "# first sort variables according to their dims\n",
+    "vargroups = {}\n",
+    "vargroups['no-regridding'] = []\n",
+    "for var in ds.variables:\n",
+    "    stack_dims = '|'.join(list(set(regrid_dims).intersection(ds[var].dims)))\n",
+    "    if stack_dims:\n",
+    "        if stack_dims not in vargroups:\n",
+    "            vargroups[stack_dims] = []\n",
+    "        vargroups[stack_dims].append(var)\n",
+    "    else:\n",
+    "        vargroups['no-regridding'].append(var)\n",
+    "\n",
+    "# split the dataset into separate datasets with the same regrid dimensions and process them separately\n",
+    "dsx = {}\n",
+    "for key, value in vargroups.items():\n",
+    "    if key == 'no-regridding':\n",
+    "        dsx[key] = ds[value]\n",
+    "    else:\n",
+    "        stack_dims = sorted(key.split('|'))\n",
+    "        dsx[key] = xr.Dataset()\n",
+    "        for var in value:\n",
+    "            dimorder = list(ds[var].dims)\n",
+    "            x = ds[var].stack(z=stack_dims).reset_index('z').expand_dims('w')\n",
+    "            dimorder[ds[var].dims.index(stack_dims[0])] = 'z'\n",
+    "            dimorder[ds[var].dims.index(stack_dims[1])] = 'w'\n",
+    "            x = x.transpose(*dimorder).rename({'z':stack_dims[0], 'w':stack_dims[1]})\n",
+    "            dsx[key][var] = x\n",
+    "\n",
+    "# lots of hocus pocus to ensure unique dimension names\n",
+    "unique_dims = {}\n",
+    "for key in dsx:\n",
+    "    dims = set(dsx[key].dims).intersection(regrid_dims)\n",
+    "    sizes = set()\n",
+    "    for dim in dims:\n",
+    "        sizes.add(dsx[key].dims[dim])\n",
+    "    if sizes:\n",
+    "        vsize = max(sizes)\n",
+    "    for dim in dims:\n",
+    "        if dim not in unique_dims:\n",
+    "            unique_dims[dim] = {vsize}\n",
+    "        else:\n",
+    "            unique_dims[dim].add(vsize)\n",
+    "\n",
+    "rename_dims = {}\n",
+    "for key, value in unique_dims.items():\n",
+    "    for i, l in enumerate(value):\n",
+    "        new_name = key\n",
+    "        if (i > 0):\n",
+    "            new_name = '{}_{}'.format(new_name, i)\n",
+    "        rename_dims['{}|{}'.format(key, l)] = new_name\n",
+    "\n",
+    "# now actually rename the dimensions\n",
+    "for key in dsx:\n",
+    "    dims = set(dsx[key].dims).intersection(regrid_dims)\n",
+    "    sizes = set()\n",
+    "    for dim in dims:\n",
+    "        sizes.add(dsx[key].dims[dim])\n",
+    "    if sizes:\n",
+    "        vsize = max(sizes)\n",
+    "    local_rename = {}\n",
+    "    for dim in dims:\n",
+    "        dimkey = '{}|{}'.format(dim, vsize)\n",
+    "        if dimkey in rename_dims:\n",
+    "            local_rename[dim] = rename_dims[dimkey]\n",
+    "            \n",
+    "    if local_rename:\n",
+    "        dsx[key] = dsx[key].rename(local_rename)\n",
+    "\n",
+    "ds1 = xr.merge(dsx.values())\n",
+    "\n",
+    "ds1.to_netcdf(ofile)"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python (jtti)",
+   "language": "python",
+   "name": "jtti"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.3"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
