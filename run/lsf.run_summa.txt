@@ -1,0 +1,17 @@
+#!/bin/tcsh
+# submit with: qsub [this_file]
+
+#PBS -N run_summa
+#PBS -A P48500028
+#PBS -q premium
+#PBS -l select=1:ncpus=36:mpiprocs=36
+#PBS -l walltime=03:00:00
+#PBS -m abe
+#PBS -M andywood@ucar.edu
+
+setenv TmpDir /glade/scratch/andywood/temp
+mkdir -p $TmpDir
+
+### Run the executable
+setenv MPI_SHEPHERD true
+mpiexec_mpt launch_cf.sh /glade/u/home/andywood/proj/SHARP/wreg/cali_huc12/run/joblist.run_summa.txt
