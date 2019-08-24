@@ -1,0 +1,21 @@
+#!/bin/tcsh
+# submit with qsub [job.lsf]
+
+#PBS -N run_p2p_trial_params
+#PBS -A P48500028
+#PBS -q premium
+#PBS -l select=1:ncpus=36:mpiprocs=36
+#PBS -l walltime=11:10:00
+#PBS -m abe
+#PBS -M sgangra1@vols.utk.edu
+#PBS -o /glade/scratch/gangrade/temp/run_p2p_trialparams.out
+#PBS -e /glade/scratch/gangrade/temp/run_p2p_trialparams.err
+
+setenv TmpDir /glade/scratch/gangrade/temp
+mkdir -p $TmpDir
+
+#setenv MP_PGMMODEL mpmd
+
+### Run the executable
+setenv MPI_SHEPHERD true
+mpiexec_mpt launch_cf.sh /glade/u/home/gangrade/WORK/Summa_Preprocessing/02_Reproject/params/joblist.run_p2p.trialparams.txt
