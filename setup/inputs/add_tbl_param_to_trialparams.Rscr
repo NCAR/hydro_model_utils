@@ -1,0 +1,52 @@
+#!/usr/bin/env Rscript
+# A. Wood, 2020
+# Distribute table parameters according to soil or veg indices into trialparameters file
+
+library(ncdf4)
+
+# --- settings (hardwired for now!)
+ncParamFileIn  <- "./trialParams.camels.diag1.nc"
+ncAttribFile   <- "../attributes.camels.v1.nc"
+tblParamFile   <- "./mptable.csv"           # csv table extracted from MPTABLE.TBL
+newVarInNames  <- c("HVT", "HVB")           # names in table
+newVarOutNames <- c("heightCanopyTop", "heightCanopyBottom")
+newVarUnits    <- c("m", "m")
+indexName      <- "vegTypeIndex"            # name in attribute file
+
+# --- copy the existing data file to new file, and open the latter for read/write
+ncParamFileOut  <- paste(ncParamFileIn, ".new", sep="")
+file.copy(ncParamFileIn, ncParamFileOut, overwrite=TRUE)
+ncparam <- nc_open(ncParamFileOut, write=TRUE)
+
+# --- open attributes file and table parameters file
+ncatt   <- nc_open(ncAttribFile)
+tblData <- read.csv(tblParamFile)
+
+# --- copy hru dim from existing parameter file
+hrudim  <- ncparam$dim[['hru']]
+
+# --- get the veg-type variable from the attribute file
+typeIndex <- ncvar_get(ncatt, indexName)
+
+# --- loop over each listed variable
+for (v in 1:length(newVarInNames)) {
+  
+  # --- create the data (use type index as array index on table)
+  # Note: for now assume the table columns align with sequential indices
+  #       this isn't really necessary but would need to use a hash if not
+
+  # syntax needed to strip out added rownames from filtering & make into list/vector
+  tmpData <- as.vector(t(tblData[match(newVarInNames[v],tblData[,1]),(typeIndex+1)]))
+  
+  # define, add and populate new netcdf variables
+  newvar  <- ncvar_def(name=newVarOutNames[v], units=newVarUnits, dim=hrudim, missval=999.0, prec='double')
+  ncparam <- ncvar_add(ncparam, newvar)   # update file handle
+  ncvar_put(ncparam, newvar, tmpData)     # write data
+  message("added ", newVarOutNames[v])    
+}
+
+# --- clean up
+nc_close(ncparam)
+nc_close(ncatt)
+message("-----")
+message("wrote ", ncParamFileOut)

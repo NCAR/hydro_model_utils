@@ -14,5 +14,6 @@ set IDMapFile = IDtoIndex.nldas_conus.mapping.txt
 set Python    = /Users/andywood/misc/miniconda2/bin/python2.7
 
 
-$Python poly2poly.map_vector_trialparams.py $Mapping $InFl $OutFl $HruType $IDMapFile $start_poly $end_poly $varname
+echo $Python poly2poly.map_vector_trialparams.py $Mapping $InFl $OutFl $HruType $IDMapFile $start_poly $end_poly $varname
+#$Python poly2poly.map_vector_trialparams.py $Mapping $InFl $OutFl $HruType $IDMapFile $start_poly $end_poly $varname
 

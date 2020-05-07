@@ -207,10 +207,11 @@ def writeNetCDFData(fn,  prec, temp, pres, dslr, lwav, shum, wind,
     else:
         # integer HRU
         hruId = ncfile.createVariable('hruId', 'i8', ('hru', ))   # edited EC
-        hruId[:] = np.asarray(hrus, dtype='int')
-        #hruId[:] = np.asarray(hrus, dtype='i8')        # AW for HUCs
+        #hruId[:] = np.asarray(hrus, dtype='int')
+        hruId[:] = np.asarray(hrus, dtype='i8')        # AW for HUCs
     
-    hruId.long_name = 'USGS HUC12 ID'
+    #hruId.long_name = 'USGS HUC12 ID'
+    hruId.long_name = 'USGS ID'  # for camels
         
         
     # --- Times ---
@@ -433,6 +434,7 @@ def compAvgVal(wgt, nc_in, varname):
 use = '''
 Usage: %s -[h] <weight_netCDF> <input_netCDF> <output_netCDF>
                <hru_type (int or str)> <id_mapping_file.txt>
+               <start_out_rec=0> <end_out_rec>
         -h  help
 '''
 if __name__ == '__main__':

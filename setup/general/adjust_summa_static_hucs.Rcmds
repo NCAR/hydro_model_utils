@@ -1,0 +1,68 @@
+# A.Wood, Apr 2020
+# copy/replace values for some elements of a static variable (eg, attributes, params) netcdf file
+# uses unwanted hucs to store data for missing hucs, using values from their neighbors
+# these must be supplied in a mapping file by the user
+# note, if real information exists for the new HUCs, need to circle back afterwards and edit the output
+#
+# run this program within R via: source("adjust_summa_static_hucs.Rcmds")
+
+library(ncdf4)
+
+# --- files ... this operation won't be replicated much so ok to hardwire
+staticFileIn  <- "../../settings/prev/attributes.wUShuc12.nc"
+staticFileOut <- "./attributes.wUShuc12.adj.nc"
+#staticFileIn  <- "../../settings/prev/trialParams.wUShuc12.v2.nc"
+#staticFileOut <- "./trialParams.wUShuc12.v2-adj.nc"
+mapFile       <- "./huc_mapping.wUS.txt"   # contains missing huc, source huc, and overwrite huc
+
+# --- open input file and get hruIds
+file.copy(staticFileIn, staticFileOut, overwrite=TRUE)   # copy input file to output file and open for writing
+
+ncout         <- nc_open(staticFileOut, write=TRUE)
+hruIds        <- ncvar_get(ncout, 'hruId')
+
+# --- read huc mapping information and set up indices for swap
+mapHucs       <- read.table(mapFile, header=T)
+overwriteNdx  <- match(mapHucs[,3], hruIds)
+sourceNdx     <- match(mapHucs[,2], hruIds)
+addIds        <- mapHucs[,1]
+
+# --- loop over variables to make substitutions
+Vars <- names(ncout[['var']])
+for(v in 1:length(Vars)) {
+  message("adjusting variable ", Vars[v])
+
+  tmpData <- ncvar_get(ncout, Vars[v])    # read netcdf variable 
+
+  # swap in data for new variable: fill unwanted hru record with proxy data for missing cell
+  if(Vars[v] == 'hruId' || Vars[v] == 'gruId' || Vars[v] == 'hru2gruId') {
+    tmpData[overwriteNdx] <- addIds                 # swap in the desired new Ids
+  } else {
+    tmpData[overwriteNdx] <- tmpData[sourceNdx]     # swap in the proxy data
+  }
+
+  # write adjusted variable back out
+  ncvar_put( ncout, Vars[v], tmpData)    # for static variable (no time dim)
+}
+nc_close(ncout)  # close netcdf file
+
+# --- final messaging
+
+message("--------------------------------------------------------------------------")
+message("DONE: output file is: ", staticFileOut)
+message(length(addIds), " new elements were created by overwriting unwanted elements with specified source elements")
+message("Check final order: additional reordering or trimming of the output may be needed. ")  
+message("--------------------------------------------------------------------------")
+
+# DONE
+
+
+
+
+
+#  --- misc code if ever need to adapt this for a space-time variable
+#  } else if(vars[v] != "data_step") {
+#    message("reading, reordering, writing variable ", vars[v])
+#    tmpdat <- ncvar_get(ncout, vars[v])
+#    ncvar_put( ncout, vars[v], tmpdat[new_order, ] )  # for variable with time dimension
+#  }
