@@ -11,8 +11,6 @@
 #         no mapping required here -- but one could map another resolution vals, similar
 #         to the param mapping scripts
 #
-#         check: nSoil and nSnow might have to be 'int' instead of 'int64' in output
-#
 # Requirements:  run with a python (eg miniconda) 2.7 that includes netCDF4
 #
 # =========================================================================
@@ -45,13 +43,13 @@ def getOutputPolyIDs(nc_file):
 
 
 # write variables to netcdf output file
-def writeNC_state_vars(nc_out, newVarName, newVarDim, newVarType, newVarVals):
+def writeNC_state_vars(nc_out, newVarName, newVarDim, newVarType, newVarVals, fillVal):
 
     """ Write <vars>[hru] array in netCDF4 file,<fn> and variable of
         <varname> """
 
     print "adding data"
-    ncvar = nc_out.createVariable(newVarName, newVarType, (newVarDim, 'hru',))    
+    ncvar = nc_out.createVariable(newVarName, newVarType, (newVarDim, 'hru',),fill_value=fillVal)    
     ncvar[:] = newVarVals   # store data in netcdf file
 
 
@@ -64,7 +62,7 @@ def writeNC_dims(fn,  scalarv, midSoil, midToto, ifcToto, hrus, hru_type):
     nc_out = nc4.Dataset(fn, 'w', format='NETCDF4')
 
     # Create dimensions
-    dim_hru = nc_out.createDimension('hru', len(hrus))
+    dim_hru     = nc_out.createDimension('hru', len(hrus))
     dim_scalarv = nc_out.createDimension('scalarv', scalarv)
     dim_midSoil = nc_out.createDimension('midSoil', midSoil)
     dim_midToto = nc_out.createDimension('midToto', midToto)
@@ -75,13 +73,27 @@ def writeNC_dims(fn,  scalarv, midSoil, midToto, ifcToto, hrus, hru_type):
         # string HRU (need to add string length)
         max_strlen = 20  # EC
         dim_str = nc_out.createDimension('strlen', max_strlen)
-        hruId = nc_out.createVariable('hruId', 'S1', ('hru', 'strlen'))  
+        hruId = nc_out.createVariable('hruId', 'S1', ('hru', 'strlen'),fill_value='-999')  
+        print "writing hru_type", hru_type
         hruId[:] = nc4.stringtochar(np.asarray(hrus,
                                   dtype='S{}'.format(max_strlen)))         
-    else:
+    elif hru_type == 'int64':
         # integer HRU
-        hruId = nc_out.createVariable('hruId', 'i8', ('hru', ))   # edited EC
-        hruId[:] = np.asarray(hrus, dtype='int')
+        hruId = nc_out.createVariable('hruId', 'i8', ('hru', ), fill_value='-999')   
+        print "writing hru_type", hru_type
+        hruId[:] = hrus
+        #hruId[:] = np.asarray(hrus, dtype='int64')
+
+    elif hru_type == 'int':
+        # integer HRU
+        hruId = nc_out.createVariable('hruId', 'i4', ('hru', ), fill_value='-999')   
+        print "writing hru_type", hru_type
+        hruId[:] = hrus
+        #hruId[:] = np.asarray(hrus, dtype='int')
+
+    else:
+        # not recognized
+	sys.exit("ERROR, hru_type not recognized: must be str, int64, or int")
 
     # add attribute    
     hruId.long_name = 'USGS HUC12 ID'
@@ -94,8 +106,7 @@ def writeNC_dims(fn,  scalarv, midSoil, midToto, ifcToto, hrus, hru_type):
 #                  Main                    #
 ############################################
 use = '''
-Usage: %s -[h] <example_output_netCDF> <input_netCDF> <output_netCDF>
-               <hru_type (int or str)>
+Usage: %s -[h] <existing_inputfile_with_hruId <output_netCDF> <hru_type (int|int64|str)>
         -h  help
 '''
 if __name__ == '__main__':
@@ -123,7 +134,7 @@ if __name__ == '__main__':
     if len(args) == 3:
         nc_example_name = args[0]   # template file (other params)
         nc_out_name = args[1]   # output cold-state file
-        hru_type = args[2]   # 'int' or 'string'
+        hru_type = args[2]   # 'int', 'int64' or 'string'
         # nc_in_name  = args[4]   # existing cold-state file
  
         # hardwired to forcing formats (hru index rather than grid)
@@ -132,21 +143,18 @@ if __name__ == '__main__':
 
         # === now start to create the cold state variables using the variable template ===
 
-        # settings (hardwire for now - later read from a config file -- 4 layer
-	#scalarv = 1        
-	#midSoil = 4
-	#midToto = 4 
-	#ifcToto = 5
-        #dT = 10800 # timestep of forcings in seconds
-        #lyrDepth  = [0.1, 0.3, 0.6, 1.0]
-        #lyrHeight = [0.0, 0.1, 0.4, 1.0, 2.0]
+        # settings (hardwire for now)
+        # -- 3 layer
+        scalarv = 1        
+        midSoil = 3
+        midToto = 3 
+        ifcToto = midToto+1
 
-        # settings 3 layer
-	scalarv = 1        
-	midSoil = 3
-	midToto = 3 
-	ifcToto = 4
         dT = 10800 # timestep of forcings in seconds
+        #dT = 3600 # timestep of forcings in seconds
+
+        #lyrDepth  = [0.1, 0.5, 0.9]
+        #lyrHeight = [0.0, 0.1, 0.6, 1.5]
         lyrDepth  = [0.1, 0.3, 0.6]
         lyrHeight = [0.0, 0.1, 0.4, 1.0]
 
@@ -158,62 +166,61 @@ if __name__ == '__main__':
         #  this could be done by looping through the input state file and xferring values
         #  could also read vars and 
 
+        intFillVal  = -999
+        realFillVal = -999.0
+
         # nSoil, nSnow
         newVarVals = np.full((1,nOutPolygons), midSoil, dtype='int')
-        writeNC_state_vars(nc_out, 'nSoil', 'scalarv', 'int', newVarVals)
+        writeNC_state_vars(nc_out, 'nSoil', 'scalarv', 'i4', newVarVals, intFillVal)
         newVarVals = np.zeros((1,nOutPolygons), dtype='int')
-        writeNC_state_vars(nc_out, 'nSnow', 'scalarv', 'int', newVarVals)                
+        writeNC_state_vars(nc_out, 'nSnow', 'scalarv', 'i4', newVarVals, intFillVal)
+
         # dT
         newVarVals = np.full((1,nOutPolygons), dT)        
-        writeNC_state_vars(nc_out, 'dt_init', 'scalarv', 'f8', newVarVals)
+        writeNC_state_vars(nc_out, 'dt_init', 'scalarv', 'f8', newVarVals, realFillVal)
+
         # SWE, SnowDepth, SfcMeltPond, SnowAlbedo, CanopyLiq, CanopyIce
         newVarVals = np.zeros((1,nOutPolygons))
-        writeNC_state_vars(nc_out, 'scalarSWE', 'scalarv', 'f8', newVarVals)
-        writeNC_state_vars(nc_out, 'scalarSnowDepth', 'scalarv', 'f8', newVarVals)
-        writeNC_state_vars(nc_out, 'scalarSfcMeltPond', 'scalarv', 'f8', newVarVals)
-        writeNC_state_vars(nc_out, 'scalarSnowAlbedo', 'scalarv', 'f8', newVarVals)
-        writeNC_state_vars(nc_out, 'scalarCanopyLiq', 'scalarv', 'f8', newVarVals)
-        writeNC_state_vars(nc_out, 'scalarCanopyIce', 'scalarv', 'f8', newVarVals)        
+        writeNC_state_vars(nc_out, 'scalarSWE', 'scalarv', 'f8', newVarVals, realFillVal)
+        writeNC_state_vars(nc_out, 'scalarSnowDepth', 'scalarv', 'f8', newVarVals, realFillVal)
+        writeNC_state_vars(nc_out, 'scalarSfcMeltPond', 'scalarv', 'f8', newVarVals, realFillVal)
+        writeNC_state_vars(nc_out, 'scalarSnowAlbedo', 'scalarv', 'f8', newVarVals, realFillVal)
+        writeNC_state_vars(nc_out, 'scalarCanopyLiq', 'scalarv', 'f8', newVarVals, realFillVal)
+        writeNC_state_vars(nc_out, 'scalarCanopyIce', 'scalarv', 'f8', newVarVals, realFillVal)
+
         # CanairTemp, CanopyTemp
         newVarVals = np.full((1,nOutPolygons), 283.16)        
-        writeNC_state_vars(nc_out, 'scalarCanairTemp', 'scalarv', 'f8', newVarVals)
-        writeNC_state_vars(nc_out, 'scalarCanopyTemp', 'scalarv', 'f8', newVarVals)
+        writeNC_state_vars(nc_out, 'scalarCanairTemp', 'scalarv', 'f8', newVarVals, realFillVal)
+        writeNC_state_vars(nc_out, 'scalarCanopyTemp', 'scalarv', 'f8', newVarVals, realFillVal)
+
         # AquiferStorage
         newVarVals = np.full((1,nOutPolygons), 1.0)        
-        writeNC_state_vars(nc_out, 'scalarAquiferStorage', 'scalarv', 'f8', newVarVals)
+        writeNC_state_vars(nc_out, 'scalarAquiferStorage', 'scalarv', 'f8', newVarVals, realFillVal)
 
         # layer MatricHead
         newVarVals = np.full((midSoil,nOutPolygons), -1.0)
-        writeNC_state_vars(nc_out, 'mLayerMatricHead', 'midSoil', 'f8', newVarVals)
+        writeNC_state_vars(nc_out, 'mLayerMatricHead', 'midSoil', 'f8', newVarVals, realFillVal)
+
         # layer Temp
         newVarVals = np.full((midToto,nOutPolygons), 283.16)
-        writeNC_state_vars(nc_out, 'mLayerTemp', 'midToto', 'f8', newVarVals)
+        writeNC_state_vars(nc_out, 'mLayerTemp', 'midToto', 'f8', newVarVals, realFillVal)
+
         # layer VolFracLiq
         newVarVals = np.full((midToto,nOutPolygons), 0.2)
-        writeNC_state_vars(nc_out, 'mLayerVolFracLiq', 'midToto', 'f8', newVarVals)
+        writeNC_state_vars(nc_out, 'mLayerVolFracLiq', 'midToto', 'f8', newVarVals, realFillVal)
+
         # layer VolFracIce
         newVarVals = np.full((midToto,nOutPolygons), 0.0)
-        writeNC_state_vars(nc_out, 'mLayerVolFracIce', 'midToto', 'f8', newVarVals)
+        writeNC_state_vars(nc_out, 'mLayerVolFracIce', 'midToto', 'f8', newVarVals, realFillVal)
 
         # layer Depth, Height
         newVarVals = np.full((nOutPolygons,midToto), lyrDepth).transpose()
-        writeNC_state_vars(nc_out, 'mLayerDepth', 'midToto', 'f8', newVarVals)
+        writeNC_state_vars(nc_out, 'mLayerDepth', 'midToto', 'f8', newVarVals, realFillVal)
         newVarVals = np.full((nOutPolygons,ifcToto), lyrHeight).transpose()
-        writeNC_state_vars(nc_out, 'iLayerHeight', 'ifcToto', 'f8', newVarVals)        
+        writeNC_state_vars(nc_out, 'iLayerHeight', 'ifcToto', 'f8', newVarVals, realFillVal)
 
         nc_out.close()
 
     else:
         usage()
 
-
-        # code for reading input data variable & attributes
-        # to pass to processing and write routines (instead of hardwired calls above
-#        f = nc4.Dataset(nc_infl, 'r')
-#        var_in = f.variables[varname]
-#        attNames = []
-#        attContents = []
-#        attr = var_in.ncattrs()  # get attributes
-#        for n in range(0,len(attr)):
-#            attNames.extend([attr[n]])
-#            attContents.extend([var_in.getncattr(attr[n])])
